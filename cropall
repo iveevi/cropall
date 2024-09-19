@@ -1,0 +1,73 @@
+#!/usr/bin/env python3
+import os
+import re
+import sys
+
+from PIL import Image
+
+# TODO: mode for whitespace and alpha
+def crop(images):
+    # print('Cropping images', images)
+
+    # If 3 channel, convert to 4 channel
+    # for path, image in images.items():
+    #     if image.mode == 'RGB':
+    #         print('Converting', path, 'to RGBA')
+    #         images[path] = image.convert('RGBA')
+
+    # TODO: multilpe criteria for cropping
+    boxes = []
+    for path, image in images.items():
+        import numpy as np
+
+        rgb = image.split()[:3]
+        rgb = Image.merge('RGB', rgb)
+
+        sums = np.sum(rgb, axis=2)
+        mask = np.where(sums < 255 * 3, 1, 0)
+
+        indices = np.where(mask == 1)
+        rgb_box = (np.min(indices[1]), np.min(indices[0]), np.max(indices[1]), np.max(indices[0]))
+
+        corners = np.array([
+            [ rgb_box[0], rgb_box[1] ],
+            [ rgb_box[2], rgb_box[1] ],
+            [ rgb_box[2], rgb_box[3] ],
+            [ rgb_box[0], rgb_box[3] ],
+        ])
+
+        boxes.append(rgb_box)
+
+    # print('Boxes', boxes)
+
+    left = min([ box[0] for box in boxes ])
+    top = min([ box[1] for box in boxes ])
+    right = max([ box[2] for box in boxes ])
+    bottom = max([ box[3] for box in boxes ])
+
+    print('Common box', left, top, right, bottom)
+
+    # Crop images
+    os.makedirs('crop', exist_ok=True)
+    for path, image in images.items():
+        image = image.crop((left, top, right, bottom))
+        image.save('crop/' + os.path.basename(path))
+
+if __name__ == '__main__':
+    # Crop a batch of images based on largest common alpha box
+    # Usage: python cropall.py <images...>
+    # Output: crop/<images>.png
+
+    assert len(sys.argv) > 1, 'No images specified'
+    patterns = [ re.compile(p) for p in sys.argv[1:] ]
+    # TODO: use glob format instead...
+
+    images = {}
+    for root, dirs, files in os.walk('.'):
+        for f in files:
+            for p in patterns:
+                if p.match(f):
+                    path = os.path.join(root, f)
+                    images[path] = Image.open(path)
+
+    crop(images)
